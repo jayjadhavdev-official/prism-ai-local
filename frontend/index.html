@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Prism AI Chat</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+    </head>
+    <body class="bg-black text-white font-sans h-screen flex flex-col">
+        <header
+            class="p-4 border-b border-zinc-800 bg-black flex items-center gap-3"
+        >
+            <img
+                src="assets/logo.png"
+                alt="Logo"
+                class="w-8 h-8 rounded-full"
+            />
+            <div>
+                <h1 class="text-lg font-bold">Prism AI</h1>
+                <p class="text-xs text-green-400">● Gemma 4 Active</p>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-4 space-y-4" id="chat-container">
+            <div class="flex justify-end">
+                <div class="bg-blue-600 p-3 rounded-lg max-w-md">
+                    Hello! Tell me about yourself.
+                </div>
+            </div>
+            <div class="flex justify-start items-start gap-3">
+                <img
+                    src="assets/agent-avatar.png"
+                    alt="AI"
+                    class="w-8 h-8 rounded-full"
+                />
+                <div class="bg-zinc-900 p-3 rounded-lg max-w-md">
+                    I am your locally hosted gemma4 model running on your
+                    hardware.
+                </div>
+            </div>
+        </main>
+
+        <footer class="p-4 bg-black border-t border-zinc-800">
+            <div class="flex gap-2 max-w-4xl mx-auto">
+                <input
+                    type="text"
+                    id="user-input"
+                    placeholder="Type your prompt here..."
+                    class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:outline-none focus:border-zinc-500 text-white"
+                />
+                <button
+                    id="send-btn"
+                    class="bg-zinc-600 hover:bg-zinc-700 px-6 py-2 rounded-lg font-medium transition"
+                >
+                    Send
+                </button>
+            </div>
+        </footer>
+
+        <script src="app.js"></script>
+    </body>
+</html>

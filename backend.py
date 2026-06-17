@@ -12,7 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connect directly to Ollama instance
+
 client = OpenAI(
     base_url="http://localhost:11434/v1",
     api_key="ollama",
