@@ -1,6 +1,6 @@
 const chatContainer = document.getElementById('chat-container');
 const userInput = document.getElementById('user-input');
-const sendBtn = domcunet.getElementById('send-btn');
+const sendBtn = document.getElementById('send-btn');
 
 chatContainer.innerHTML = '';
 
