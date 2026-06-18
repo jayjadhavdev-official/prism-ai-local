@@ -3,10 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const userInput = document.getElementById("user-input");
   const sendBtn = document.getElementById("send-btn");
 
-  if (!chatContainer || !userInput || !sendBtn) {
-    console.error("HTML ID mismatch.");
-    return;
-  }
+  if (!chatContainer || !userInput || !sendBtn) return;
 
   chatContainer.innerHTML = "";
 
@@ -15,18 +12,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let innerHTMLString = "";
 
     if (sender === "user") {
-      // Apply Tailwind classes for a right-aligned blue user bubble
       messageDiv.className = "flex justify-end";
-      innerHTMLString = `
-          <div class="bg-blue-600 p-3 rounded-lg max-w-md break-words">
-              ${text}
-          </div>
-      `;
+      innerHTMLString = `<div class="bg-blue-600 p-3 rounded-lg max-w-xl break-words">${text}</div>`;
     } else {
-      // Apply Tailwind classes for a left-aligned zinc agent bubble
-      messageDiv.classname = "flex justify-start items-start gap-3";
+      messageDiv.className = "flex justify-start items-start gap-3";
       innerHTMLString = `
-        <div class="bg-zinc-900 border border-zinc-800 p-3 rounded-lg max-w-md break-words">
+          <div class="bg-black border border-black p-3 rounded-lg max-w-full break-words prose prose-invert">
               ${text}
           </div>
       `;
@@ -46,25 +37,39 @@ document.addEventListener("DOMContentLoaded", () => {
     appendMessage("user", text);
     userInput.value = "";
 
-    const thinkingBox = appendMessage("agent", "Thinking...");
+    const thinkingBox = appendMessage("agent", "");
 
     try {
-      const respons = await fetch("http://127.0.0.1:5000/api/chat", {
+      const response = await fetch("http://127.0.0.1:5000/api/chat", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "applications/json",
         },
         body: JSON.stringify({ message: text }),
       });
 
-      if (!response.ok) throw new Error("Server error");
+      if (!response.ok) throw new Error("Server returned error status");
 
-      const data = await response.json();
-      thkingBox.innerText = data.response;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let accumulatedMarkdown = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunkText = decoder.decode(value, { stream: true });
+
+        accumulatedMarkdown += chunkText;
+        thinkingBox.innerHTML = marked.parse(accumulatedMarkdown);
+
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
     } catch (error) {
-      thinkingBox.innerText =
-        "Error: Could not connect to the local Prism AI Engine.";
-      thinkingBox.classList.add("text=red=400");
+      console.error("Streaming error:", error);
+      thinkingBox.innerText = "Error streaming from local engine.";
+      thinkingBox.classList.add("text-red-400");
     }
   }
 
