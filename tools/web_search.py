@@ -10,18 +10,20 @@ def get_system_schema():
         "parameters": {
             "type": "object",
             "properties": {
-                "type": "string",
-                "description": "The search query keywords."
-            }
-        },
-        "required": ["query"]
+                "query": { 
+                    "type": "string",
+                    "description": "The search query keywords."
+                }
+            },
+            "required": ["query"]
+        }
     }
 
 def execute_tool(query: str) -> str:
     """Performs a lightweight, zero-dependency search query."""
     try:
         formatted_query = urllib.parse.quote(query)
-        url = f"https://htlm.duckduckgo.com/html/?q={formatted_query}"
+        url = f"https://html.duckduckgo.com/html/?q={formatted_query}"
 
         req = urllib.request.Request(
             url, 
@@ -29,7 +31,7 @@ def execute_tool(query: str) -> str:
         )
 
         with urllib.request.urlopen(req) as response:
-            html = response.read().decode('utf=8')
+            html = response.read().decode('utf-8')
 
             if "No results" in html:
                 return "No web results found for that specific search query."

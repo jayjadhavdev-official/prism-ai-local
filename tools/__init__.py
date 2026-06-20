@@ -20,5 +20,11 @@ def get_all_tools():
 def call_tool_by_name(name: str, arguments: dict) -> str:
     """Executes the tool function directly matching the call choice of the model."""
     if name in registry:
+
+        if name == "web_search":
+            if "queries" in arguments and "query" not in arguments:
+                q_val = arguments["queries"]
+                arguments["query"] = q_val[0] if isinstance(q_val, list) else q_val
+                
         return registry[name](**arguments)
     return f"Tool '{name}' not found in local engine system registry."

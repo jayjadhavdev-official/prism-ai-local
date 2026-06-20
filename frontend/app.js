@@ -5,7 +5,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 1. Grab the Toggle UI elements
   const searchToggle = document.getElementById("searchToggle");
-  const indicator = searchToggle ? searchToggle.querySelector(".id-indicator") : null;
+  const indicator = searchToggle
+    ? searchToggle.querySelector(".id-indicator")
+    : null;
   let isSearchEnabled = false;
 
   if (!chatContainer || !userInput || !sendBtn) return;
@@ -16,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (searchToggle && indicator) {
     searchToggle.addEventListener("click", () => {
       isSearchEnabled = !isSearchEnabled;
-      
+
       if (isSearchEnabled) {
         searchToggle.classList.remove("border-zinc-800", "text-zinc-500");
         searchToggle.classList.add("border-blue-500/30", "text-blue-400");
@@ -43,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       messageDiv.className = "flex justify-start items-start gap-3";
       innerHTMLString = `
-          <div class="bg-zinc-900 border border-zinc-800 p-3 rounded-lg max-w-full break-words prose prose-invert">
+          <div class="bg-black border border-black p-3 rounded-lg max-w-full break-words prose prose-invert font-mono">
               ${text}
           </div>
       `;
@@ -72,9 +74,9 @@ document.addEventListener("DOMContentLoaded", () => {
           "Content-Type": "application/json", // FIXED: typo fixed from applications/json
         },
         // 3. Sent the switch context flag payload directly to Python
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: text,
-          webSearchActive: isSearchEnabled
+          webSearchActive: isSearchEnabled,
         }),
       });
 
