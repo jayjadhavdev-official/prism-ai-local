@@ -7,7 +7,7 @@
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
     </head>
-    <body class="bg-black text-white font-sans h-screen flex flex-col">
+    <body class="bg-black text-white font-mono h-screen flex flex-col">
         <header
             class="p-4 border-b border-zinc-800 bg-black flex items-center gap-3"
         >
@@ -17,7 +17,7 @@
                 class="w-8 h-8 rounded-full"
             />
             <div>
-                <h1 class="text-lg font-bold">Prism AI</h1>
+                <h1 class="text-lg font-bold tracking-tight">Prism AI</h1>
                 <p class="text-xs text-green-400">● Agent Active</p>
             </div>
         </header>
@@ -57,7 +57,7 @@
                     type="text"
                     id="user-input"
                     placeholder="Type your prompt here..."
-                    class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:outline-none focus:border-zinc-500 text-white h-[42px]"
+                    class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:outline-none focus:border-zinc-500 text-white h-[42px] font-mono placeholder:text-zinc-600"
                 />
                 <button
                     id="send-btn"
