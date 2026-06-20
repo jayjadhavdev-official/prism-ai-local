@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from openai import OpenAI
 import json
 
-from tools import get_all_tools, call_tool_by_name
+from tools import get_all_tools, call_tool_by_name, web_search
 
 app = FastAPI(title="Showcase Local Engine")
 app.add_middleware(
@@ -29,13 +29,24 @@ async def chat_endpoint(request: Request):
         data = json.loads(raw_body.decode("utf-8"))
         user_message = data.get("message", "hello")
 
-        messages = [{"role": "user", "content": user_message}]
-                
+        web_search_active = data.get("webSearchActive", False)                
         
+        messages = [
+            {
+                "role": "system",
+                "content": f"You are Prism AI. The current year is 2026. Web search tool access: {web_search_active}."
+            },
+            {"role": "user", "content": user_message}
+            ]
+
+        available_tools = get_all_tools()
+        if not web_search_active:
+            available_tools = [t for t in available_tools if t.get("name") != "web_search"]
+
         response = client.chat.completions.create(
             model="gemma4:e2b",
             messages=messages,
-            tools=get_all_tools(),
+            tools=available_tools if available_tools else None,
         )
 
         response_message = response.choices[0].message
