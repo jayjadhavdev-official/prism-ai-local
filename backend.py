@@ -16,7 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# The structured schema contract for Ollama's grammar constraints
 tool_call_schema = {
     "type": "object",
     "properties": {
@@ -73,7 +72,6 @@ async def chat_endpoint(request: Request):
         ]
 
         if web_search_active:
-            # FIXED: Passing schema through extra_body["format"] to align with Ollama's API surface
             response = client.chat.completions.create(
                 model="gemma4:e2b",
                 messages=messages,  # type: ignore
@@ -83,7 +81,6 @@ async def chat_endpoint(request: Request):
 
             response_json = response.choices[0].message.content
             
-            # Double-check against empty returns before decoding
             if not response_json or not response_json.strip():
                 raise ValueError("Ollama engine returned an empty response token string.")
                 
