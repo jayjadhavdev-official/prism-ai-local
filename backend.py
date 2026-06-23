@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import ollama
 
-# Pulling our modularized search tool execution loop cleanly
-from tools.web_search import execute_tool
+from tools.web_search import execute_tool_sync
 
-app = FastAPI(title="Prism AI Local Engine")
+app = FastAPI(title="Prism AI Engine")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,77 +17,111 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BASE_SYSTEM = (
+    "You are Prism AI, a cutting‑edge assistant with live web access.\n"
+    "Today's date is {date}.\n"
+    "When the user asks a question that requires real‑time information, the system will inject live web search results. "
+    "You MUST base your answer on that data. Never say you don't have access to real‑time data – just use the data you are given. "
+    "If the data appears incomplete, answer as helpfully as you can using it."
+)
+
+
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
     try:
-        raw_body = await request.body()
-        data = json.loads(raw_body.decode("utf-8"))
-        user_message = data.get("message", "hello")
+        body = await request.body()
+        data = json.loads(body.decode("utf-8"))
+        user_message = data.get("message", "").strip()
         web_search_active = data.get("webSearchActive", False)
 
-        current_date_str = datetime.now().strftime("%A, %B %d, %Y")
-        base_system_prompt = f"You are Prism AI. Current Date: {current_date_str}. Web search tool access: {web_search_active}."
+        current_date = datetime.now().strftime("%A, %B %d, %Y")
+        system_prompt = BASE_SYSTEM.replace("{date}", current_date)
 
         if web_search_active:
-            # Turn 1: High deterministic tag choice for tool requirements
-            routing_messages = [
+            router_messages = [
                 {
-                    "role": "system", 
-                    "content": f"{base_system_prompt}\nRespond with exactly '<search>query</search>' if answering requires live web search context. Otherwise answer normally."
+                    "role": "system",
+                    "content": (
+                        "Analyze if the user query requires current real‑time data, dates, weather, news, or a web search. "
+                        "If it does, output exactly: <search>refined query</search>. If it does NOT, output: <normal>."
+                    ),
                 },
-                {"role": "user", "content": user_message}
+                {"role": "user", "content": user_message},
             ]
-            
+
             router_response = ollama.chat(
                 model="gemma4:e2b",
-                messages=routing_messages,
-                options={"temperature": 0.0}
+                messages=router_messages,
+                options={"temperature": 0.0},
             )
+            router_text = router_response.get("message", {}).get("content", "").strip()
 
-            router_text = router_response.get("message", {}).get("content", "")
-
+            search_query = user_message
+            needs_search = False
             if "<search>" in router_text:
+                needs_search = True
                 try:
-                    start_idx = router_text.find("<search>") + len("<search>")
-                    end_idx = router_text.find("</search>")
-                    search_query = router_text[start_idx:end_idx].strip()
+                    start = router_text.find("<search>") + len("<search>")
+                    end = router_text.find("</search>")
+                    if end > start:
+                        search_query = router_text[start:end].strip()
                 except Exception:
-                    search_query = user_message
+                    pass
 
-                print(f"[ENGINE] Intercepted stream. Routing search parameters via MCP module: '{search_query}'")
-                
-                # Concise execution calling our isolated tool file synchronously
-                tool_output = execute_tool(search_query)
+            context_data = None
+            if needs_search:
+                print(f"[ENGINE] Searching for: '{search_query}'")
+                context_data = execute_tool_sync(search_query)
+                if context_data:
+                    print("[ENGINE] Search returned data.")
+                else:
+                    print("[ENGINE] Search returned no usable data.")
 
+            if needs_search and context_data:
                 final_messages = [
-                    {"role": "system", "content": base_system_prompt},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
-                    {"role": "system", "content": f"Grounded Context verified from local browser lookup:\n{tool_output}"}
+                    {
+                        "role": "user",
+                        "content": (
+                            "IMPORTANT: The following is LIVE web search data that directly answers the question above. "
+                            "You MUST read it and use it to compose your answer. Do NOT ignore it, do NOT say you lack information. "
+                            "If the data seems incomplete, answer with what you have.\n\n"
+                            f"LIVE SEARCH RESULTS:\n{context_data}"
+                        ),
+                    },
                 ]
-                
-                final_stream = ollama.chat(model="gemma4:e2b", messages=final_messages, stream=True)
-                
-                def generate_stream():
+
+                final_stream = ollama.chat(
+                    model="gemma4:e2b", messages=final_messages, stream=True
+                )
+
+                def generate_search_stream():
                     for chunk in final_stream:
                         yield chunk.get("message", {}).get("content", "")
-                return StreamingResponse(generate_stream(), media_type="text/plain")
 
-        # Fallback normal chat trajectory
+                return StreamingResponse(generate_search_stream(), media_type="text/plain")
+
+            print("[ENGINE] Falling back to standard chat (no search context).")
+
         standard_messages = [
-            {"role": "system", "content": base_system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
         ]
-        
-        direct_stream = ollama.chat(model="gemma4:e2b", messages=standard_messages, stream=True)
+        direct_stream = ollama.chat(
+            model="gemma4:e2b", messages=standard_messages, stream=True
+        )
 
         def generate_direct_stream():
             for chunk in direct_stream:
                 yield chunk.get("message", {}).get("content", "")
+
         return StreamingResponse(generate_direct_stream(), media_type="text/plain")
 
     except Exception as e:
-        print(f"CRITICAL BACKEND ERROR: {str(e)}")
+        print(f"[CRITICAL FAILURE]: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

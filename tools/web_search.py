@@ -1,68 +1,69 @@
-import json
-import asyncio
-import sys
+from ddgs import DDGS
+from typing import Optional
+
 
 def get_system_schema():
-    """Defines the search schema for the LLM."""
+    """Tool definition – kept for compatibility with function‑calling models."""
     return {
-        "name": "web_search",
-        "description": "Search the internet for real-time information, weather, news, and live updates.",
+        "name": "get_web_search_summaries",
+        "description": "Call whenever real‑time data, weather, dates, news or live lookups are needed.",
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "The search query keywords."}
+                "query": {"type": "string", "description": "Specific query keywords."}
             },
             "required": ["query"],
         },
     }
 
-async def execute_tool_async(query: str) -> str:
+
+def execute_tool_sync(query: str) -> Optional[str]:
     """
-    Asynchronously invokes the web-search-mcp server via stdio,
-    dispatches the JSON-RPC payload, and reads back the clean snippets.
+    Fetch a useful answer for the given query using DDGS.
+    - First tries the instant‑answer API (for weather, calculations, etc.)
+    - If that fails, performs a text search and returns up to 3 snippets.
+    - If still empty, tries a simplified query (removes date‑specific words).
+    Returns `None` only if absolutely nothing can be found.
     """
     try:
-        # Launch the local MCP server via npx
-        process = await asyncio.create_subprocess_exec(
-            "npx", "-y", "websearch-mcp",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
-        )
+        with DDGS() as ddgs:
+            try:
+                instant = list(ddgs.answers(query))
+                if instant and instant[0].get("text"):
+                    answer = instant[0]["text"].strip()
+                    if answer:
+                        return f"[Direct Answer]\n{answer}"
+            except Exception:
+                pass
 
-        # Build standardized MCP JSON-RPC payload
-        # Using get-web-search-summaries for lightweight result text snippets
-        mcp_payload = {
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "id": 1,
-            "params": {
-                "name": "get-web-search-summaries",
-                "arguments": {
-                    "query": query,
-                    "limit": 3
-                }
-            }
-        }
+            results = list(ddgs.text(query, max_results=3))
+            if results:
+                cleaned = []
+                for i, res in enumerate(results, start=1):
+                    body = res.get("body", "").strip()
+                    if body:
+                        cleaned.append(f"[{i}] {body}")
+                if cleaned:
+                    return "\n\n".join(cleaned)
 
-        input_data = json.dumps(mcp_payload) + "\n"
-        stdout, _ = await process.communicate(input=input_data.encode("utf-8"))
 
-        response_data = json.loads(stdout.decode("utf-8"))
-        content_items = response_data.get("result", {}).get("content", [])
-        
-        if content_items:
-            return content_items[0].get("text", "No context returned from browser execution.")
-        
-        return "Local search node returned an empty text canvas context."
+            import re
+            simple = re.sub(r'\b(yesterday|today|now|currently|tonight|night)\b', '', query, flags=re.IGNORECASE)
+            simple = re.sub(r'\s+', ' ', simple).strip()
+            if simple and simple != query:
+                print(f"[SEARCH] Retrying with simplified query: '{simple}'")
+                fallback_results = list(ddgs.text(simple, max_results=3))
+                if fallback_results:
+                    cleaned = []
+                    for i, res in enumerate(fallback_results, start=1):
+                        body = res.get("body", "").strip()
+                        if body:
+                            cleaned.append(f"[{i}] {body}")
+                    if cleaned:
+                        return "\n\n".join(cleaned)
+
+            return None
 
     except Exception as e:
-        return f"Local web-search-mcp bridge failed: {str(e)}"
-
-def execute_tool(query: str) -> str:
-    """Synchronous entry point that safely wraps the async subprocess logic."""
-    try:
-        # Run the async loop inside our synchronous backend framework wrapper
-        return asyncio.run(execute_tool_async(query))
-    except Exception as e:
-        return f"Async wrapper error inside web_search execution block: {str(e)}"
+        print(f"[SEARCH ERROR] {e}")
+        return None
