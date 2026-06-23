@@ -3,11 +3,11 @@ from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import ollama  # Native client import
+import ollama
 
-from tools import get_all_tools, call_tool_by_name
+from tools import call_tool_by_name
 
-app = FastAPI(title="Showcase Local Engine")
+app = FastAPI(title="Prism AI Local Engine")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,32 +15,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-tool_call_schema = {
-    "type": "object",
-    "properties": {
-        "action": {
-            "type": "string",
-            "enum": ["execute_tool", "reply_directly"],
-            "description": "Choose whether to call a tool or talk to the user.",
-        },
-        "tool_name": {
-            "type": "string",
-            "enum": ["web_search"],
-            "description": "The name of the tool to run, if action is execute_tool.",
-        },
-        "search_query": {
-            "type": "string",
-            "description": "The target search query string if running a web search.",
-        },
-        "direct_reply": {
-            "type": "string",
-            "description": "Your text answer if no web tools are needed.",
-        },
-    },
-    "required": ["action"],
-}
-
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
@@ -52,91 +26,76 @@ async def chat_endpoint(request: Request):
 
         current_date_str = datetime.now().strftime("%A, %B %d, %Y")
 
+        system_prompt = (
+            f"You are Prism AI. Current Date: {current_date_str}.\n"
+            "You operate under strict structural rules:\n"
+            f"Web search tool status: {web_search_active}.\n"
+            "If the user asks for real-time information, weather, or events that you do not know, "
+            "you MUST use the search tool by writing exactly: <search>your search keywords here</search>.\n"
+            "Do not apologize, do not write intro text, just output the tag. If you do not need to search, "
+            "respond normally to the user."
+        )
+
         messages = [
-            {
-                "role": "system",
-                "content": f"You are Prism AI. Current Date: {current_date_str}. Web search tool access: {web_search_active}.",
-            },
-            {"role": "user", "content": user_message},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
         ]
 
-        if web_search_active:
-            response = ollama.chat(
-                model="gemma4:e2b",
-                messages=messages,
-                format=tool_call_schema,
-                options={"temperature": 0.2} 
-            )
+        first_stream = ollama.chat(
+            model="gemma4:e2b",
+            messages=messages,
+            stream=True,
+            options={"temperature": 0.1} 
+        )
 
-            response_json = response.get("message", {}).get("content", "")
-            
-            if not response_json or not response_json.strip():
-                raise ValueError("Ollama native engine returned an empty token response.")
+        def generate_intercept_stream():
+            accumulated_text = ""
+            search_triggered = False
+            search_query = ""
+
+            for chunk in first_stream:
+                content = chunk.get("message", {}).get("content", "")
+                accumulated_text += content
+
+                if "<search>" in accumulated_text and not search_triggered:
+                    if "</search>" in accumulated_text:
+                        search_triggered = True
+                        start_idx = accumulated_text.find("<search>") + len("<search>")
+                        end_idx = accumulated_text.find("</search>")
+                        search_query = accumulated_text[start_idx:end_idx].strip()
+                        break
+                    else:
+                        continue
                 
-            decision = json.loads(response_json.strip())
+                if "<" not in accumulated_text and not search_triggered:
+                    yield content
 
-            if decision.get("action") == "execute_tool":
-                function_name = decision.get("tool_name")
-                function_args = {"query": decision.get("search_query", "")}
+            if search_triggered and web_search_active:
+                print(f"[ENGINE] Intercepted stream. Executing search for: '{search_query}'")
+                
+                tool_output = call_tool_by_name("web_search", {"query": search_query})
 
-                tool_output = call_tool_by_name(function_name, function_args)
+                messages.append({"role": "assistant", "content": f"<search>{search_query}</search>"})
+                messages.append({"role": "user", "content": f"Search Results Context:\n{tool_output}"})
 
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": f"Executing local module: {function_name}...",
-                    }
-                )
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"System tool feedback loop output:\n{tool_output}",
-                    }
-                )
-
-                final_stream_response = ollama.chat(
+                final_stream = ollama.chat(
                     model="gemma4:e2b",
                     messages=messages,
-                    stream=True,
+                    stream=True
                 )
 
-                def generate_stream():
-                    for chunk in final_stream_response:
-                        yield chunk.get("message", {}).get("content", "")
-
-                return StreamingResponse(
-                    generate_stream(), media_type="text/plain"
-                )
-
-            else:
-                def generate_static_stream():
-                    yield decision.get("direct_reply", "No direct output text returned.")
-
-                return StreamingResponse(
-                    generate_static_stream(), media_type="text/plain"
-                )
-
-        else:
-            direct_stream = ollama.chat(
-                model="gemma4:e2b",
-                messages=messages,
-                stream=True,
-            )
-
-            def generate_direct_stream():
-                for chunk in direct_stream:
+                for chunk in final_stream:
                     yield chunk.get("message", {}).get("content", "")
+            
+            elif search_triggered and not web_search_active:
+                yield "Web search is currently disabled in your interface panel settings."
 
-            return StreamingResponse(
-                generate_direct_stream(), media_type="text/plain"
-            )
+        return StreamingResponse(generate_intercept_stream(), media_type="text/plain")
 
     except Exception as e:
         print(f"CRITICAL BACKEND ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="127.0.0.1", port=5000)
