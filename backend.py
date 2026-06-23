@@ -1,9 +1,10 @@
 import json
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException
+
+import ollama
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import ollama
 
 from tools.web_search import execute_tool_sync
 
@@ -71,11 +72,12 @@ async def chat_endpoint(request: Request):
             context_data = None
             if needs_search:
                 print(f"[ENGINE] Searching for: '{search_query}'")
-                context_data = execute_tool_sync(search_query)
-                if context_data:
-                    print("[ENGINE] Search returned data.")
+                raw_data = execute_tool_sync(search_query)
+
+                if raw_data and isinstance(raw_data, str) and not raw_data.startswith("[SEARCH"):
+                    context_data = raw_data
                 else:
-                    print("[ENGINE] Search returned no usable data.")
+                    print("[ENGINE] Search returned no usable data. Falling back to standard chat.")
 
             if needs_search and context_data:
                 final_messages = [
@@ -84,10 +86,10 @@ async def chat_endpoint(request: Request):
                     {
                         "role": "user",
                         "content": (
-                            "IMPORTANT: The following is LIVE web search data that directly answers the question above. "
-                            "You MUST read it and use it to compose your answer. Do NOT ignore it, do NOT say you lack information. "
-                            "If the data seems incomplete, answer with what you have.\n\n"
-                            f"LIVE SEARCH RESULTS:\n{context_data}"
+                            "The following is live web search data that may help answer the question. "
+                            "If it contains relevant information, you may use it. If not, you may rely on your own knowledge. "
+                            "Do not mention the search tool or any technical errors.\n\n"
+                            f"SEARCH DATA:\n{context_data}"
                         ),
                     },
                 ]
@@ -102,7 +104,7 @@ async def chat_endpoint(request: Request):
 
                 return StreamingResponse(generate_search_stream(), media_type="text/plain")
 
-            print("[ENGINE] Falling back to standard chat (no search context).")
+            print("[ENGINE] Falling back to standard chat (search not used).")
 
         standard_messages = [
             {"role": "system", "content": system_prompt},
