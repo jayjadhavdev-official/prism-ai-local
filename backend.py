@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from openai import OpenAI
+import ollama  # Native client import
 
 from tools import get_all_tools, call_tool_by_name
 
@@ -29,15 +29,9 @@ tool_call_schema = {
             "enum": ["web_search"],
             "description": "The name of the tool to run, if action is execute_tool.",
         },
-        "tool_args": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The target search query string.",
-                }
-            },
-            "required": ["query"],
+        "search_query": {
+            "type": "string",
+            "description": "The target search query string if running a web search.",
         },
         "direct_reply": {
             "type": "string",
@@ -46,11 +40,6 @@ tool_call_schema = {
     },
     "required": ["action"],
 }
-
-client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama",
-)
 
 
 @app.post("/api/chat")
@@ -72,23 +61,23 @@ async def chat_endpoint(request: Request):
         ]
 
         if web_search_active:
-            response = client.chat.completions.create(
+            response = ollama.chat(
                 model="gemma4:e2b",
-                messages=messages,  # type: ignore
-                response_format={"type": "json_object"},
-                extra_body={"format": tool_call_schema} if web_search_active else None # type: ignore
+                messages=messages,
+                format=tool_call_schema,
+                options={"temperature": 0.2} 
             )
 
-            response_json = response.choices[0].message.content
+            response_json = response.get("message", {}).get("content", "")
             
             if not response_json or not response_json.strip():
-                raise ValueError("Ollama engine returned an empty response token string.")
+                raise ValueError("Ollama native engine returned an empty token response.")
                 
             decision = json.loads(response_json.strip())
 
             if decision.get("action") == "execute_tool":
                 function_name = decision.get("tool_name")
-                function_args = decision.get("tool_args", {})
+                function_args = {"query": decision.get("search_query", "")}
 
                 tool_output = call_tool_by_name(function_name, function_args)
 
@@ -105,16 +94,15 @@ async def chat_endpoint(request: Request):
                     }
                 )
 
-                final_stream_response = client.chat.completions.create(
+                final_stream_response = ollama.chat(
                     model="gemma4:e2b",
-                    messages=messages,  # type: ignore
+                    messages=messages,
                     stream=True,
                 )
 
                 def generate_stream():
                     for chunk in final_stream_response:
-                        if chunk.choices and chunk.choices[0].delta.content:
-                            yield chunk.choices[0].delta.content
+                        yield chunk.get("message", {}).get("content", "")
 
                 return StreamingResponse(
                     generate_stream(), media_type="text/plain"
@@ -122,23 +110,22 @@ async def chat_endpoint(request: Request):
 
             else:
                 def generate_static_stream():
-                    yield decision.get("direct_reply", "No text output returned by the engine.")
+                    yield decision.get("direct_reply", "No direct output text returned.")
 
                 return StreamingResponse(
                     generate_static_stream(), media_type="text/plain"
                 )
 
         else:
-            direct_stream = client.chat.completions.create(
+            direct_stream = ollama.chat(
                 model="gemma4:e2b",
-                messages=messages,  # type: ignore
+                messages=messages,
                 stream=True,
             )
 
             def generate_direct_stream():
                 for chunk in direct_stream:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        yield chunk.choices[0].delta.content
+                    yield chunk.get("message", {}).get("content", "")
 
             return StreamingResponse(
                 generate_direct_stream(), media_type="text/plain"
