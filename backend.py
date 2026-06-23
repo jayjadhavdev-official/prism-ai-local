@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import ollama
 
-from tools import call_tool_by_name
+# Pulling our modularized search tool execution loop cleanly
+from tools.web_search import execute_tool
 
 app = FastAPI(title="Prism AI Local Engine")
 app.add_middleware(
@@ -25,72 +26,64 @@ async def chat_endpoint(request: Request):
         web_search_active = data.get("webSearchActive", False)
 
         current_date_str = datetime.now().strftime("%A, %B %d, %Y")
+        base_system_prompt = f"You are Prism AI. Current Date: {current_date_str}. Web search tool access: {web_search_active}."
 
-        system_prompt = (
-            f"You are Prism AI. Current Date: {current_date_str}.\n"
-            "You operate under strict structural rules:\n"
-            f"Web search tool status: {web_search_active}.\n"
-            "If the user asks for real-time information, weather, or events that you do not know, "
-            "you MUST use the search tool by writing exactly: <search>your search keywords here</search>.\n"
-            "Do not apologize, do not write intro text, just output the tag. If you do not need to search, "
-            "respond normally to the user."
-        )
+        if web_search_active:
+            # Turn 1: High deterministic tag choice for tool requirements
+            routing_messages = [
+                {
+                    "role": "system", 
+                    "content": f"{base_system_prompt}\nRespond with exactly '<search>query</search>' if answering requires live web search context. Otherwise answer normally."
+                },
+                {"role": "user", "content": user_message}
+            ]
+            
+            router_response = ollama.chat(
+                model="gemma4:e2b",
+                messages=routing_messages,
+                options={"temperature": 0.0}
+            )
 
-        messages = [
-            {"role": "system", "content": system_prompt},
+            router_text = router_response.get("message", {}).get("content", "")
+
+            if "<search>" in router_text:
+                try:
+                    start_idx = router_text.find("<search>") + len("<search>")
+                    end_idx = router_text.find("</search>")
+                    search_query = router_text[start_idx:end_idx].strip()
+                except Exception:
+                    search_query = user_message
+
+                print(f"[ENGINE] Intercepted stream. Routing search parameters via MCP module: '{search_query}'")
+                
+                # Concise execution calling our isolated tool file synchronously
+                tool_output = execute_tool(search_query)
+
+                final_messages = [
+                    {"role": "system", "content": base_system_prompt},
+                    {"role": "user", "content": user_message},
+                    {"role": "system", "content": f"Grounded Context verified from local browser lookup:\n{tool_output}"}
+                ]
+                
+                final_stream = ollama.chat(model="gemma4:e2b", messages=final_messages, stream=True)
+                
+                def generate_stream():
+                    for chunk in final_stream:
+                        yield chunk.get("message", {}).get("content", "")
+                return StreamingResponse(generate_stream(), media_type="text/plain")
+
+        # Fallback normal chat trajectory
+        standard_messages = [
+            {"role": "system", "content": base_system_prompt},
             {"role": "user", "content": user_message}
         ]
+        
+        direct_stream = ollama.chat(model="gemma4:e2b", messages=standard_messages, stream=True)
 
-        first_stream = ollama.chat(
-            model="gemma4:e2b",
-            messages=messages,
-            stream=True,
-            options={"temperature": 0.1} 
-        )
-
-        def generate_intercept_stream():
-            accumulated_text = ""
-            search_triggered = False
-            search_query = ""
-
-            for chunk in first_stream:
-                content = chunk.get("message", {}).get("content", "")
-                accumulated_text += content
-
-                if "<search>" in accumulated_text and not search_triggered:
-                    if "</search>" in accumulated_text:
-                        search_triggered = True
-                        start_idx = accumulated_text.find("<search>") + len("<search>")
-                        end_idx = accumulated_text.find("</search>")
-                        search_query = accumulated_text[start_idx:end_idx].strip()
-                        break
-                    else:
-                        continue
-                
-                if "<" not in accumulated_text and not search_triggered:
-                    yield content
-
-            if search_triggered and web_search_active:
-                print(f"[ENGINE] Intercepted stream. Executing search for: '{search_query}'")
-                
-                tool_output = call_tool_by_name("web_search", {"query": search_query})
-
-                messages.append({"role": "assistant", "content": f"<search>{search_query}</search>"})
-                messages.append({"role": "user", "content": f"Search Results Context:\n{tool_output}"})
-
-                final_stream = ollama.chat(
-                    model="gemma4:e2b",
-                    messages=messages,
-                    stream=True
-                )
-
-                for chunk in final_stream:
-                    yield chunk.get("message", {}).get("content", "")
-            
-            elif search_triggered and not web_search_active:
-                yield "Web search is currently disabled in your interface panel settings."
-
-        return StreamingResponse(generate_intercept_stream(), media_type="text/plain")
+        def generate_direct_stream():
+            for chunk in direct_stream:
+                yield chunk.get("message", {}).get("content", "")
+        return StreamingResponse(generate_direct_stream(), media_type="text/plain")
 
     except Exception as e:
         print(f"CRITICAL BACKEND ERROR: {str(e)}")
