@@ -1,3 +1,6 @@
 pip install ollama
 pip install fastapi
 pip install openai
+pip install chromadb
+pip install sentence-transformers
+pip install ddgs
