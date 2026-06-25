@@ -10,7 +10,7 @@ A fully local, privacy‑first conversational AI agent with live web search, sho
 - **Short‑Term Memory** – Remembers conversation context within the same session (session ID in browser).
 - **Long‑Term Memory** – Persistently stores user facts (explicit “remember” triggers) using ChromaDB with semantic retrieval.
 - **Self‑Contained Frontend** – Served directly by the backend; no separate web server needed.
-- **Showcase‑Ready** – Expose securely via ngrok for remote demos without any software on the client device.
+- **Built-In HTML and CSS Viewers** - Showcases directly your code (similar to Claude Artifacts).
 
 ## 🧱 Project Structure
 
@@ -67,22 +67,6 @@ All settings are inside `backend.py`:
    Navigate to `http://127.0.0.1:5000` in your browser.  
    *(Do **not** open `index.html` directly – the backend serves it to make API calls work.)*
 
-## 🌐 Remote Access (for Demos)
-
-Use **ngrok** to create a public URL that works from any device with just a browser:
-
-1. **Download** [ngrok](https://ngrok.com/download) and extract it (e.g., `C:\ngrok\ngrok.exe`).
-2. **Authenticate** (free account required):
-   - Sign up at [dashboard.ngrok.com](https://dashboard.ngrok.com/signup), copy your authtoken.
-   - Run: `ngrok config add-authtoken YOUR_TOKEN`
-3. **Start the tunnel** (while `backend.py` is running):
-   ```bash
-   ngrok http 5000
-   ```
-   You’ll receive a public URL like `https://xxxx.ngrok-free.app`.
-4. **Access from anywhere** – open that URL in any browser. No installations needed.
-
-> 💡 Close the ngrok terminal after the demo to stop public access.
 
 ## 💬 Usage
 
