@@ -1,74 +1,400 @@
 <!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Prism AI Chat</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
-    </head>
-    <body class="bg-black text-white font-mono h-screen flex flex-col">
-        <header
-            class="p-4 border-b border-zinc-800 bg-black flex items-center gap-3"
-        >
-            <img
-                src="assets/logo.png"
-                alt="Logo"
-                class="w-8 h-8 rounded-full"
-            />
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prism AI Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <style>
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: #09090b; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+
+        .sidebar { transition: width 0.3s ease; overflow: hidden; white-space: nowrap; }
+        .sidebar-hidden { width: 0 !important; border-right-width: 0 !important; }
+        .sidebar-hidden > * { opacity: 0; pointer-events: none; }
+
+        .artifact-card {
+            border: 1px solid #27272a; border-radius: 12px; overflow: hidden; margin: 12px 0;
+        }
+        .artifact-header {
+            background: #18181b; padding: 4px; display: flex; gap: 4px;
+        }
+        .artifact-header button {
+            background: transparent; border: none; color: #a1a1aa; font-size: 12px;
+            padding: 6px 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s;
+        }
+        .artifact-header button.active {
+            background: #27272a; color: white;
+        }
+        .artifact-pane {
+            display: none; max-height: 500px; overflow: auto;
+        }
+        .artifact-pane.active {
+            display: block;
+        }
+        .artifact-pane pre {
+            margin: 0; padding: 12px; background: #09090b; border-radius: 0;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .artifact-pane iframe {
+            width: 100%; height: 400px; border: none; background: white;
+        }
+    </style>
+</head>
+<body class="bg-black text-white font-mono h-screen flex">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col h-full">
+        <div class="p-4 border-b border-zinc-800 flex justify-between items-center">
+            <h2 class="text-sm font-semibold text-zinc-400">Chats</h2>
+            <button id="new-chat-btn" class="text-zinc-400 hover:text-white transition text-lg leading-none">＋</button>
+        </div>
+        <div id="chat-list" class="flex-1 overflow-y-auto sidebar-scroll"></div>
+    </aside>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col h-full">
+        <header class="p-4 border-b border-zinc-800 bg-black flex items-center gap-3">
+            <button id="sidebarToggle" class="text-zinc-400 hover:text-white transition text-xl leading-none mr-2" title="Toggle Sidebar">☰</button>
+            <img src="assets/logo.png" alt="Logo" class="w-8 h-8 rounded-full" />
             <div>
                 <h1 class="text-lg font-bold tracking-tight">Prism AI</h1>
                 <p class="text-xs text-green-400">● Agent Active</p>
             </div>
         </header>
 
-        <main class="flex-1 overflow-y-auto p-4 space-y-4" id="chat-container">
-            <div class="flex justify-end">
-                <div class="bg-blue-600 p-3 rounded-lg max-w-md">
-                    Hello! Tell me about yourself.
-                </div>
-            </div>
-            <div class="flex justify-start items-start gap-3">
-                <img
-                    src="assets/agent-avatar.png"
-                    alt="AI"
-                    class="w-8 h-8 rounded-full"
-                />
-                <div class="bg-black border border-zinc-800 p-3 rounded-lg max-w-md">
-                    I am your locally hosted gemma4 model running on your
-                    hardware.
-                </div>
-            </div>
-        </main>
+        <main class="flex-1 overflow-y-auto p-4 space-y-4" id="chat-container"></main>
 
         <footer class="p-4 bg-black border-t border-zinc-800">
             <div class="flex gap-2 max-w-4xl mx-auto items-center">
-                
-                <button 
-                    id="searchToggle" 
-                    type="button"
-                    class="px-3 py-2 text-xs font-mono rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-zinc-400 transition flex items-center gap-2 whitespace-nowrap h-[42px]"
-                >
-                    <span class="w-2 h-2 rounded-full bg-zinc-700 id-indicator transition-all duration-300"></span>
-                    Web Search: OFF
+                <button id="searchToggle" type="button"
+                    class="px-3 py-2 text-xs font-mono rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-500 hover:text-zinc-400 transition flex items-center gap-2 whitespace-nowrap h-[42px]">
+                    <span id="searchIndicator" class="w-2 h-2 rounded-full bg-zinc-700 transition-all duration-300"></span>
+                    Web Search: <span id="searchLabel">OFF</span>
                 </button>
-
-                <input
-                    type="text"
-                    id="user-input"
-                    placeholder="Type your prompt here..."
-                    class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:outline-none focus:border-zinc-500 text-white h-[42px] font-mono placeholder:text-zinc-600"
-                />
-                <button
-                    id="send-btn"
-                    class="bg-zinc-600 hover:bg-zinc-700 px-6 py-2 rounded-lg font-medium transition h-[42px]"
-                >
-                    Send
-                </button>
-                
+                <input type="text" id="user-input" placeholder="Type your prompt here..."
+                    class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 focus:outline-none focus:border-zinc-500 text-white h-[42px] font-mono placeholder:text-zinc-600" />
+                <button id="send-btn"
+                    class="bg-zinc-600 hover:bg-zinc-700 px-6 py-2 rounded-lg font-medium transition h-[42px]">Send</button>
             </div>
         </footer>
+    </div>
 
-        <script src="app.js"></script>
-    </body>
+    <script>
+        // ---------- LocalStorage ----------
+        const CHATS_KEY = 'prism_chats';
+        const CURRENT_CHAT_KEY = 'prism_current_chat';
+        const WEB_SEARCH_KEY = 'prism_web_search';
+
+        let webSearchActive = localStorage.getItem(WEB_SEARCH_KEY) === 'true';
+        let currentChatId = localStorage.getItem(CURRENT_CHAT_KEY);
+        let sidebarVisible = true;
+
+        let chats = JSON.parse(localStorage.getItem(CHATS_KEY)) || {};
+        if (!currentChatId || !chats[currentChatId]) {
+            currentChatId = crypto.randomUUID();
+            chats[currentChatId] = { title: 'New Chat', messages: [] };
+            saveChats();
+            localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
+        }
+
+        // ---------- DOM ----------
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        const searchToggle = document.getElementById('searchToggle');
+        const searchIndicator = document.getElementById('searchIndicator');
+        const searchLabel = document.getElementById('searchLabel');
+        const chatListDiv = document.getElementById('chat-list');
+        const newChatBtn = document.getElementById('new-chat-btn');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+
+        // ---------- Web Search Toggle ----------
+        function updateSearchUI() {
+            if (webSearchActive) {
+                searchIndicator.classList.remove('bg-zinc-700');
+                searchIndicator.classList.add('bg-green-500');
+                searchLabel.textContent = 'ON';
+            } else {
+                searchIndicator.classList.remove('bg-green-500');
+                searchIndicator.classList.add('bg-zinc-700');
+                searchLabel.textContent = 'OFF';
+            }
+            localStorage.setItem(WEB_SEARCH_KEY, webSearchActive.toString());
+        }
+        updateSearchUI();
+        searchToggle.addEventListener('click', () => {
+            webSearchActive = !webSearchActive;
+            updateSearchUI();
+        });
+
+        // ---------- Sidebar Toggle ----------
+        function toggleSidebar() {
+            sidebarVisible = !sidebarVisible;
+            if (sidebarVisible) {
+                sidebar.classList.remove('sidebar-hidden');
+                sidebarToggle.textContent = '✕';
+            } else {
+                sidebar.classList.add('sidebar-hidden');
+                sidebarToggle.textContent = '☰';
+            }
+        }
+        sidebarToggle.addEventListener('click', toggleSidebar);
+
+        // ---------- Chat List ----------
+        function saveChats() { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); }
+
+        function renderChatList() {
+            chatListDiv.innerHTML = '';
+            const ids = Object.keys(chats);
+            if (ids.length === 0) return;
+            ids.forEach(id => {
+                const chat = chats[id];
+                const div = document.createElement('div');
+                div.className = `px-4 py-3 cursor-pointer border-b border-zinc-800 hover:bg-zinc-900 transition text-sm truncate ${id === currentChatId ? 'bg-zinc-900 text-white' : 'text-zinc-400'}`;
+                div.textContent = chat.title || 'Untitled';
+                div.addEventListener('click', () => switchChat(id));
+                const delBtn = document.createElement('button');
+                delBtn.className = 'float-right text-zinc-600 hover:text-red-400 ml-2 opacity-0 hover:opacity-100';
+                delBtn.innerHTML = '🗑';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteChat(id);
+                });
+                div.appendChild(delBtn);
+                chatListDiv.appendChild(div);
+            });
+        }
+
+        function switchChat(chatId) {
+            if (chatId === currentChatId) return;
+            currentChatId = chatId;
+            localStorage.setItem(CURRENT_CHAT_KEY, chatId);
+            loadMessagesFromCurrentChat();
+            renderChatList();
+        }
+
+        function deleteChat(chatId) {
+            if (Object.keys(chats).length <= 1) return;
+            delete chats[chatId];
+            if (currentChatId === chatId) {
+                currentChatId = Object.keys(chats)[0];
+                localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
+            }
+            saveChats();
+            renderChatList();
+            if (currentChatId === Object.keys(chats)[0]) loadMessagesFromCurrentChat();
+        }
+
+        function newChat() {
+            const newId = crypto.randomUUID();
+            chats[newId] = { title: 'New Chat', messages: [] };
+            currentChatId = newId;
+            localStorage.setItem(CURRENT_CHAT_KEY, newId);
+            saveChats();
+            renderChatList();
+            loadMessagesFromCurrentChat();
+        }
+        newChatBtn.addEventListener('click', newChat);
+
+        // ---------- Artifact Injection ----------
+        function injectArtifacts(bubbleElement) {
+            const codeBlocks = bubbleElement.querySelectorAll('pre code.language-html');
+            codeBlocks.forEach(block => {
+                const pre = block.parentElement;
+                const rawCode = block.textContent;
+
+                const card = document.createElement('div');
+                card.className = 'artifact-card';
+
+                // Header with two buttons
+                const header = document.createElement('div');
+                header.className = 'artifact-header';
+
+                const previewBtn = document.createElement('button');
+                previewBtn.textContent = 'Preview';
+                previewBtn.classList.add('active');
+
+                const codeBtn = document.createElement('button');
+                codeBtn.textContent = 'Code';
+
+                header.appendChild(previewBtn);
+                header.appendChild(codeBtn);
+
+                // Content panes
+                const previewPane = document.createElement('div');
+                previewPane.className = 'artifact-pane active';
+                const iframe = document.createElement('iframe');
+                iframe.sandbox = 'allow-same-origin';
+                iframe.srcdoc = rawCode;
+                iframe.style.height = '400px';
+                previewPane.appendChild(iframe);
+
+                const codePane = document.createElement('div');
+                codePane.className = 'artifact-pane';
+                const codePre = document.createElement('pre');
+                const codeCode = document.createElement('code');
+                codeCode.textContent = rawCode;
+                codePre.appendChild(codeCode);
+                codePane.appendChild(codePre);
+
+                // Toggle logic
+                previewBtn.addEventListener('click', () => {
+                    previewPane.classList.add('active');
+                    codePane.classList.remove('active');
+                    previewBtn.classList.add('active');
+                    codeBtn.classList.remove('active');
+                });
+                codeBtn.addEventListener('click', () => {
+                    codePane.classList.add('active');
+                    previewPane.classList.remove('active');
+                    codeBtn.classList.add('active');
+                    previewBtn.classList.remove('active');
+                });
+
+                card.appendChild(header);
+                card.appendChild(previewPane);
+                card.appendChild(codePane);
+
+                pre.replaceWith(card);
+            });
+        }
+
+        // ---------- Message Display ----------
+        function addMessageToUI(role, content, isHtml = false) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start items-start gap-3'}`;
+
+            if (role === 'assistant') {
+                const avatar = document.createElement('div');
+                avatar.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold';
+                avatar.textContent = 'P';
+                wrapper.appendChild(avatar);
+            }
+
+            const bubble = document.createElement('div');
+            bubble.className = `p-3 rounded-lg ${
+                role === 'user' ? 'max-w-md bg-blue-600' : 'flex-1 bg-black'
+            }`;
+
+            if (isHtml) {
+                bubble.innerHTML = content;
+            } else {
+                bubble.innerHTML = marked.parse(content);
+                injectArtifacts(bubble);
+            }
+
+            wrapper.appendChild(bubble);
+            chatContainer.appendChild(wrapper);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addStreamingMessage() {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flex justify-start items-start gap-3';
+            wrapper.id = 'streaming-msg';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white text-sm font-bold';
+            avatar.textContent = 'P';
+            wrapper.appendChild(avatar);
+
+            const bubble = document.createElement('div');
+            bubble.className = 'p-3 rounded-lg flex-1 bg-black';
+            bubble.innerHTML = '';
+            wrapper.appendChild(bubble);
+            chatContainer.appendChild(wrapper);
+            return bubble;
+        }
+
+        function loadMessagesFromCurrentChat() {
+            chatContainer.innerHTML = '';
+            const currentChat = chats[currentChatId];
+            if (currentChat && currentChat.messages) {
+                currentChat.messages.forEach(msg => {
+                    addMessageToUI(msg.role, msg.content, false);
+                });
+            }
+            userInput.focus();
+        }
+
+        function saveMessageToCurrentChat(role, content) {
+            const currentChat = chats[currentChatId];
+            if (!currentChat) return;
+            if (role === 'user' && currentChat.messages.length === 0 && currentChat.title === 'New Chat') {
+                currentChat.title = content.substring(0, 50) + (content.length > 50 ? '…' : '');
+            }
+            currentChat.messages.push({ role, content });
+            saveChats();
+            renderChatList();
+        }
+
+        // ---------- Send Message ----------
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            addMessageToUI('user', message);
+            saveMessageToCurrentChat('user', message);
+            userInput.value = '';
+            userInput.focus();
+
+            const currentMessages = chats[currentChatId].messages;
+            const historyToSend = currentMessages.slice(0, -1).slice(-20);
+
+            const assistantBubble = addStreamingMessage();
+            let fullResponse = '';
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        webSearchActive: webSearchActive,
+                        history: historyToSend
+                    })
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullResponse += chunk;
+                    assistantBubble.innerHTML = marked.parse(fullResponse);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+
+                injectArtifacts(assistantBubble);
+
+                document.getElementById('streaming-msg')?.removeAttribute('id');
+                saveMessageToCurrentChat('assistant', fullResponse);
+
+            } catch (error) {
+                assistantBubble.innerHTML = `<span class="text-red-400">Error: ${error.message}</span>`;
+                document.getElementById('streaming-msg')?.removeAttribute('id');
+            }
+        }
+
+        // ---------- Event Listeners ----------
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        renderChatList();
+        loadMessagesFromCurrentChat();
+    </script>
+</body>
 </html>
