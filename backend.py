@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+chosen_model = "llama3.1:8b"
 
 BASE_SYSTEM = (
     "You are Prism AI, a cutting‑edge assistant with live web access.\n"
@@ -96,7 +96,7 @@ async def chat_endpoint(request: Request):
             ]
 
             router_response = ollama.chat(
-                model="llama3.1:8b",
+                model=chosen_model,
                 messages=router_messages,
                 options={"temperature": 0.0},
             )
@@ -143,7 +143,7 @@ async def chat_endpoint(request: Request):
                     final_messages = messages[:-1] + [weather_message, messages[-1]]
 
                     final_stream = ollama.chat(
-                        model="llama3.1:8b", messages=final_messages, stream=True
+                        model=chosen_model, messages=final_messages, stream=True
                     )
 
                     def generate_weather_stream():
@@ -176,7 +176,7 @@ async def chat_endpoint(request: Request):
                     final_messages = messages[:-1] + [search_message, messages[-1]]
 
                     final_stream = ollama.chat(
-                        model="llama3.1:8b", messages=final_messages, stream=True
+                        model=chosen_model, messages=final_messages, stream=True
                     )
 
                     def generate_search_stream():
@@ -186,7 +186,7 @@ async def chat_endpoint(request: Request):
                     return StreamingResponse(generate_search_stream(), media_type="text/plain")
 
         final_stream = ollama.chat(
-            model="llama3.1:8b", messages=messages, stream=True
+            model=chosen_model, messages=messages, stream=True
         )
 
         def generate_direct_stream():
