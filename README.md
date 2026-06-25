@@ -135,5 +135,3 @@ If all fail, the assistant gracefully falls back to standard chat without search
 ---
 
 **Built for design showcases, education, and anyone who wants a private, extendable AI agent.**
-## ✨Special Thanks
-- Ridhima: Avid and critical benchmarker, helped with countless edits made to this repo
